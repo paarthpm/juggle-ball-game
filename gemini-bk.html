@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Babylon.js GLB Model Viewer</title>
+    <style>
+        /* Basic reset */
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif; /* Added a default font */
+        }
+
+        /* Style for the canvas */
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* Prevent touch interactions interfering */
+            outline: none; /* Remove default focus outline */
+        }
+
+        /* Style for loading text */
+        #loadingText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white; /* Make text visible on dark background */
+            font-size: 1.5em;
+            background-color: rgba(0, 0, 0, 0.7); /* Semi-transparent background */
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10; /* Ensure it's above the canvas */
+            display: none; /* Hidden by default */
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="loadingText">Loading Model...</div>
+
+    <script>
+        // Get the canvas element and loading text element
+        const canvas = document.getElementById('renderCanvas');
+        const loadingText = document.getElementById('loadingText');
+
+        // --- Babylon.js Setup ---
+
+        // Create the Babylon.js engine
+        const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+
+        // Function to create the scene
+        const createScene = async function () {
+            // Show loading text
+            loadingText.style.display = 'block';
+
+            // Create a new scene
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color3(0.2, 0.2, 0.3); // Set background color
+
+            // --- Camera ---
+            // Create an ArcRotateCamera, initial position, and attach controls
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 5, new BABYLON.Vector3(0, 1, 0), scene);
+            camera.attachControl(canvas, true);
+            camera.wheelPrecision = 50;
+            camera.lowerRadiusLimit = 2;
+            camera.upperRadiusLimit = 20;
+
+            // --- Light ---
+            // Create a basic hemispheric light
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
+
+            // --- Ground (Optional, but helps visualize movement) ---
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 10, height: 10}, scene);
+            const groundMaterial = new BABYLON.StandardMaterial("groundMat", scene);
+            groundMaterial.diffuseColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+            groundMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            ground.material = groundMaterial;
+            ground.receiveShadows = true;
+
+            // --- Model Loading ---
+            let player = null;
+            let animationGroups = {};
+            let idleAnim = null;
+            let walkAnim = null;
+            let leftFootPlayAnim = null;
+            let rightFootPlayAnim = null;
+            let currentAnim = null;
+
+            try {
+                // IMPORTANT: Replace this path with the actual path to YOUR .glb file
+                const modelPath = "assets/models/football-player-animation-see-0.glb";
+                const result = await BABYLON.SceneLoader.ImportMeshAsync("", modelPath, "", scene);
+
+                player = result.meshes[0];
+                player.position = new BABYLON.Vector3(0, 0, 0); // Center the model
+
+                // --- Animation Setup ---
+                console.log("Available Animation Groups:", result.animationGroups.map(ag => ag.name));
+                result.animationGroups.forEach(ag => {
+                    animationGroups[ag.name] = ag;
+                    ag.stop();
+                });
+
+                idleAnim = animationGroups['idle'];
+                walkAnim = animationGroups['walk'];
+                leftFootPlayAnim = animationGroups['leftFootPlay'];
+                rightFootPlayAnim = animationGroups['rightFootPlay'];
+
+                if (!idleAnim) console.warn("Idle animation not found!");
+                if (!walkAnim) console.warn("Walk animation not found!");
+                if (!leftFootPlayAnim) console.warn("leftFootPlay animation not found!");
+                if (!rightFootPlayAnim) console.warn("rightFootPlay animation not found!");
+
+                if (idleAnim) {
+                    idleAnim.start(true, 1.0, idleAnim.from, idleAnim.to, false);
+                    currentAnim = idleAnim;
+                    console.log("Starting Idle animation.");
+                } else {
+                    console.error("Cannot start default animation: Idle animation group not found.");
+                }
+
+                 loadingText.style.display = 'none';
+
+            } catch (error) {
+                console.error("Error loading model:", error);
+                loadingText.textContent = 'Error loading model. Check console.';
+                loadingText.style.color = 'red';
+                loadingText.style.display = 'block';
+            }
+
+            // --- Input Handling ---
+            const inputMap = {};
+            scene.actionManager = new BABYLON.ActionManager(scene);
+
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function (evt) {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = true;
+            }));
+
+            scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function (evt) {
+                inputMap[evt.sourceEvent.key.toLowerCase()] = false;
+            }));
+
+            // --- Movement and Animation Logic ---
+            let isMoving = false;
+            const moveSpeed = 0.05;
+            let lastFootClicked = 'right';
+
+            scene.onBeforeRenderObservable.add(() => {
+                if (!player) return;
+
+                let movedThisFrame = false;
+                let dx = 0; // Change in x
+                let dz = 0; // Change in z
+
+                 // Get the camera's forward and right directions
+                const forward = camera.getDirection(BABYLON.Axis.Z);
+                const right = camera.getDirection(BABYLON.Axis.X);
+                forward.y = 0;
+                right.y = 0;
+                forward.normalize();
+                right.normalize();
+
+                // Check movement keys - *** CONTROLS SWAPPED HERE ***
+                if (inputMap["s"]) { 
+                    dz = -moveSpeed; // Changed from moveSpeed
+                    movedThisFrame = true;
+                }
+                if (inputMap["w"]) {
+                    dz = moveSpeed; // Changed from -moveSpeed
+                    movedThisFrame = true;
+                }
+                if (inputMap["d"]) { 
+                    dx = -moveSpeed; // Changed from -moveSpeed
+                    movedThisFrame = true;
+                }
+                if (inputMap["a"]) { 
+                    dx = moveSpeed; // Changed from moveSpeed
+                    movedThisFrame = true;
+                }
+
+                // Apply movement if any key is pressed
+                if (movedThisFrame) {
+                     // Calculate the direction of movement
+                    const moveDirection = forward.scale(dz).add(right.scale(dx));
+                    player.position.addInPlace(moveDirection);
+
+                    // --- Rotation ---
+                    // if (moveDirection.lengthSquared() > 0.001) {
+                    //    let targetAngle = Math.atan2(moveDirection.x, moveDirection.z);
+                    //    let targetRotation = BABYLON.Quaternion.RotationAxis(BABYLON.Axis.Y, targetAngle);
+                    //    player.rotationQuaternion = player.rotationQuaternion || BABYLON.Quaternion.Identity();
+                    //    player.rotationQuaternion = BABYLON.Quaternion.Slerp(player.rotationQuaternion, targetRotation, 0.15);
+                    // }
+
+                    // --- Animation ---
+                    if (!isMoving && walkAnim) {
+                        isMoving = true;
+                        if (currentAnim && currentAnim !== walkAnim) currentAnim.stop();
+                        if (idleAnim && currentAnim !== idleAnim) idleAnim.stop();
+                        if (leftFootPlayAnim && currentAnim !== leftFootPlayAnim) leftFootPlayAnim.stop();
+                        if (rightFootPlayAnim && currentAnim !== rightFootPlayAnim) rightFootPlayAnim.stop();
+
+                        walkAnim.start(true, 1.0, walkAnim.from, walkAnim.to, false);
+                        currentAnim = walkAnim;
+                        console.log("Starting Walk animation.");
+                    }
+                } else {
+                    // --- Animation ---
+                    if (isMoving && idleAnim) {
+                        isMoving = false;
+                        if (walkAnim) walkAnim.stop();
+                        // Only switch to idle if the current animation isn't one of the foot plays finishing
+                        if (currentAnim !== leftFootPlayAnim && currentAnim !== rightFootPlayAnim) {
+                           idleAnim.start(true, 1.0, idleAnim.from, idleAnim.to, false);
+                           currentAnim = idleAnim;
+                           console.log("Stopping Walk, starting Idle animation.");
+                        } else {
+                            // If a foot play animation was playing when movement stopped,
+                            // the onAnimationEndObservable will handle switching back to idle.
+                            console.log("Movement stopped, waiting for foot animation to finish or already finished.");
+                        }
+                    }
+                }
+            });
+
+            // --- Mouse Click Animation ---
+            scene.onPointerDown = function (evt) {
+                if (evt.button === 0 && !isMoving && player) {
+                    console.log("Left click detected while idle.");
+                    let animToPlay = null;
+
+                    if (lastFootClicked === 'right' && leftFootPlayAnim) {
+                        animToPlay = leftFootPlayAnim;
+                        lastFootClicked = 'left';
+                        console.log("Playing left foot animation.");
+                    } else if (lastFootClicked === 'left' && rightFootPlayAnim) {
+                        animToPlay = rightFootPlayAnim;
+                        lastFootClicked = 'right';
+                        console.log("Playing right foot animation.");
+                    } else if (leftFootPlayAnim) {
+                        animToPlay = leftFootPlayAnim;
+                        lastFootClicked = 'left';
+                         console.log("Playing left foot animation (fallback/first).");
+                    }
+
+                    if (animToPlay) {
+                        if (idleAnim) idleAnim.stop();
+                        animToPlay.start(false, 1.0, animToPlay.from, animToPlay.to, false);
+                        currentAnim = animToPlay;
+
+                        animToPlay.onAnimationEndObservable.clear();
+                        animToPlay.onAnimationEndObservable.addOnce(() => {
+                            console.log("Foot animation finished.");
+                            if (!isMoving && idleAnim) {
+                                console.log("Returning to Idle animation.");
+                                idleAnim.start(true, 1.0, idleAnim.from, idleAnim.to, false);
+                                currentAnim = idleAnim;
+                            } else if (isMoving && walkAnim) {
+                                console.log("Movement started during foot anim, switching to Walk.");
+                                if(currentAnim !== walkAnim) { // Avoid stopping/starting if already walking
+                                    walkAnim.start(true, 1.0, walkAnim.from, walkAnim.to, false);
+                                    currentAnim = walkAnim;
+                                }
+                            }
+                        });
+                    } else {
+                        console.warn("Could not find appropriate foot animation to play.");
+                    }
+                } else if (isMoving) {
+                    console.log("Click ignored because player is moving.");
+                }
+            };
+
+            return scene;
+        };
+
+        // --- Run the Scene ---
+        createScene().then((scene) => {
+            engine.runRenderLoop(function () {
+                if (scene) {
+                    scene.render();
+                }
+            });
+        }).catch((error) => {
+            console.error("Failed to create scene:", error);
+            loadingText.textContent = 'Failed to initialize scene. Check console.';
+            loadingText.style.color = 'red';
+            loadingText.style.display = 'block';
+        });
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', function () {
+            engine.resize();
+        });
+
+    </script>
+</body>
+</html>
