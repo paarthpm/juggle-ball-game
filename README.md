@@ -3,7 +3,9 @@ A game built using Babylon JS and its library Canon JS.
 
 Animation to model added using Blender 4.4
 
-Work in progress.
+Work in progress. <br>
+
+Demo available at: https://paarthpm.github.io/juggle-ball-game/
 
 ## Controllers
 w => move player forward <br>
