@@ -1,18 +1,194 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Football Game</title>
-  <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.babylonjs.com/babylon.js"></script>
-  <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
-  <script src="https://cdn.babylonjs.com/cannon.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Babylon.js Multi-Player Scene</title>
+    <style>
+        html, body { overflow: hidden; width: 100%; height: 100%; margin: 0; padding: 0; }
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
+        #loadingText {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: white; font-size: 1.5em; background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px; border-radius: 8px; z-index: 10; display: none;
+        }
+    </style>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/cannon.js"></script>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  <script type="module" src="assets/js/game-canvas.js"></script>
-  <script type="module" src="assets/js/players.js"></script>
-  <script type="module" src="assets/js/football.js"></script>
-  <script type="module" src="assets/js/scene.js"></script>
+<canvas id="renderCanvas"></canvas>
+<div id="loadingText">Loading Models...</div>
+<script>
+const canvas = document.getElementById('renderCanvas');
+const loadingText = document.getElementById('loadingText');
+const engine = new BABYLON.Engine(canvas, true);
+
+const createScene = async () => {
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color3(0.2, 0.2, 0.3);
+
+    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 15, new BABYLON.Vector3(0, 1, 0), scene);
+    camera.attachControl(canvas, true);
+
+    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.8;
+
+    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 20, height: 20}, scene);
+
+    const modelPath = "assets/models/football-player-animation-see-0.glb";
+    let players = [];
+    let activePlayerIndex = 0;
+    let currentBall = null;
+    let jugglingInterval = null;
+
+
+    const arrow = BABYLON.MeshBuilder.CreateCylinder("arrow", {diameterTop: 0, diameterBottom: 0.2, height: 0.5}, scene);
+    
+    arrow.rotation.x = Math.PI; // Point downward
+    arrow.position.y = 3;
+
+    async function loadPlayer(position) {
+        const result = await BABYLON.SceneLoader.ImportMeshAsync("", modelPath, "", scene);
+        const root = result.meshes[0];
+        root.position = position;
+        let anims = {};
+        result.animationGroups.forEach(ag => { anims[ag.name] = ag; ag.stop(); });
+        return { mesh: root, anims: anims, currentAnim: null, isMoving: false };
+    }
+
+    loadingText.style.display = 'block';
+
+    const circles = [];
+
+    function createPlayerCircle(player, radius = 1.5) {
+        const disc = BABYLON.MeshBuilder.CreateDisc(`circle_${player.mesh.id}`, {
+            radius: radius,
+            tessellation: 32
+        }, scene);
+        disc.rotation.x = Math.PI / 2;
+        disc.position = new BABYLON.Vector3(0, 0.01, 0); // Local position
+        disc.parent = player.mesh; // Parent it to the player mesh
+        disc.material = new BABYLON.StandardMaterial("circleMat", scene);
+        disc.material.diffuseColor = new BABYLON.Color3(0.2, 0.6, 1);
+        disc.isPickable = false;
+        circles.push(disc);
+    }
+
+
+
+    const positions = [new BABYLON.Vector3(-4, 0, 0), new BABYLON.Vector3(0, 0, 0), new BABYLON.Vector3(4, 0, 0)];
+    for (let i = 0; i < 3; i++) players.push(await loadPlayer(positions[i]));
+
+    for (let i = 0; i < players.length; i++) {
+        createPlayerCircle(players[i], 2); // radius 2 as example
+    }
+
+    loadingText.style.display = 'none';
+
+    function updateActivePlayer() {
+        arrow.parent = players[activePlayerIndex].mesh;
+        arrow.position = new BABYLON.Vector3(0, 2.5, 0);
+    }
+
+    updateActivePlayer();
+
+    const inputMap = {};
+    scene.actionManager = new BABYLON.ActionManager(scene);
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, evt => {
+        inputMap[evt.sourceEvent.key.toLowerCase()] = true;
+        if (evt.sourceEvent.key.toLowerCase() === 'f') {
+            const current = players[activePlayerIndex];
+            if (current.currentAnim) current.currentAnim.stop();
+            if (current.anims.idle) current.anims.idle.start(true, 1.0, current.anims.idle.from, current.anims.idle.to, false);
+            current.currentAnim = current.anims.idle;
+            activePlayerIndex = (activePlayerIndex + 1) % players.length;
+            updateActivePlayer();
+        }
+
+        if (evt.sourceEvent.key === ' ') {
+            const player = players[activePlayerIndex];
+            const dir = camera.getDirection(BABYLON.Axis.Z);
+            dir.y = 0;
+            dir.normalize();
+
+            const spawnPos = player.mesh.position.add(dir.scale(1.5)).add(new BABYLON.Vector3(0, 1.5, 0));
+            const ball = BABYLON.MeshBuilder.CreateSphere("ball", { diameter: 0.3 }, scene);
+            currentBall = ball;
+            ball.position = spawnPos;
+
+            ball.material = new BABYLON.StandardMaterial("ballMat", scene);
+            ball.material.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
+
+            // Enable physics if not already
+            if (!scene.isPhysicsEnabled()) {
+                scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), new BABYLON.CannonJSPlugin());
+            }
+
+            ball.physicsImpostor = new BABYLON.PhysicsImpostor(
+                ball,
+                BABYLON.PhysicsImpostor.SphereImpostor,
+                { mass: 1, restitution: 0.5 },
+                scene
+            );
+        }
+
+    }));
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, evt => {
+        inputMap[evt.sourceEvent.key.toLowerCase()] = false;
+    }));
+
+    const moveSpeed = 0.05;
+    scene.onBeforeRenderObservable.add(() => {
+        let dx = 0, dz = 0;
+        const player = players[activePlayerIndex];
+        const mesh = player.mesh;
+        const forward = camera.getDirection(BABYLON.Axis.Z);
+        const right = camera.getDirection(BABYLON.Axis.X);
+        forward.y = 0; right.y = 0; forward.normalize(); right.normalize();
+
+           
+
+        if (inputMap['w']) dz = moveSpeed;
+        if (inputMap['s']) dz = -moveSpeed;
+        if (inputMap['a']) dx = -moveSpeed;
+        if (inputMap['d']) dx = moveSpeed;
+
+        const moveVec = forward.scale(dz).add(right.scale(dx));
+        if (moveVec.lengthSquared() > 0) {
+            mesh.position.addInPlace(moveVec);
+            if (!player.isMoving && player.anims.walk) {
+                if (player.currentAnim) player.currentAnim.stop();
+                player.anims.walk.start(true, 1.0, player.anims.walk.from, player.anims.walk.to, false);
+                player.currentAnim = player.anims.walk;
+                player.isMoving = true;
+            }
+        } else if (player.isMoving) {
+            if (player.anims.walk) player.anims.walk.stop();
+            if (player.anims.idle) player.anims.idle.start(true, 1.0, player.anims.idle.from, player.anims.idle.to, false);
+            player.currentAnim = player.anims.idle;
+            player.isMoving = false;
+        }
+    });
+    
+    canvas.addEventListener("pointerdown", function (evt) {
+    if (evt.button === 0 && currentBall && currentBall.physicsImpostor) { // Left click
+        const upImpulse = new BABYLON.Vector3(0, 7, 0); // Feel free to tweak the Y value for stronger kick
+        const contactPoint = currentBall.getAbsolutePosition();
+        currentBall.physicsImpostor.applyImpulse(upImpulse, contactPoint);
+    }
+});
+    return scene;
+};
+
+createScene().then(scene => {
+    engine.runRenderLoop(() => scene.render());
+});
+
+
+
+window.addEventListener("resize", () => engine.resize());
+</script>
 </body>
 </html>
