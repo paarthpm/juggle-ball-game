@@ -5,7 +5,8 @@ Animation to model added using Blender 4.4
 
 Work in progress. <br>
 
-Demo available at: https://paarthpm.github.io/juggle-ball-game/
+Demo available at: https://paarthpm.github.io/juggle-ball-game/ <br>
+P.S: Model not compressed, loading takes time. Patience needed for first run.
 
 ## Controllers
 w => move player forward <br>
