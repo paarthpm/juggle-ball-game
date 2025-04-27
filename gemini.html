@@ -170,30 +170,32 @@ const createScene = async () => {
         const deltaTheta = (2 * Math.PI) / circlePoints;
         for (let i = 0; i <= circlePoints; i++) {
             const theta = i * deltaTheta;
-            // Generate points in the XZ plane (Y=0)
             points.push(new BABYLON.Vector3(baseRadius * Math.cos(theta), 0, baseRadius * Math.sin(theta)));
         }
 
         const circleLine = BABYLON.MeshBuilder.CreateLines(`circleLine_${player.mesh.id}`, {
             points: points,
-            updatable: false // Not updating points, only scaling
+            updatable: false
         }, scene);
 
-        circleLine.color = new BABYLON.Color3(0.5, 0.7, 1); // Light blue color for the outline
+        // Create a material for the circle line
+        const material = new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+        material.emissiveColor = new BABYLON.Color3(0, 0.7, 1); // Initial blue color
+        material.disableLighting = true; // Make it visible without lights
+        circleLine.material = material;
 
-        // REMOVED -> circleLine.rotation.x = Math.PI / 2; <- REMOVED This line to keep the circle flat
-
-        circleLine.position = new BABYLON.Vector3(0, 0.02, 0); // Position slightly above ground to avoid z-fighting
-        circleLine.parent = player.mesh; // Parent to player
+        circleLine.position = new BABYLON.Vector3(0, 0.02, 0);
+        circleLine.parent = player.mesh;
         circleLine.isPickable = false;
 
-        // Initial scale based on current radius
         const initialScale = player.currentRadius / baseRadius;
         circleLine.scaling.x = initialScale;
-        circleLine.scaling.z = initialScale; // Scale uniformly in X and Z
+        circleLine.scaling.z = initialScale;
 
-
-        player.circleMesh = circleLine; // Store reference in player object
+        player.circleMesh = {
+            mesh: circleLine,
+            material: material // Store material reference
+        };
     }
 
 
@@ -433,13 +435,13 @@ const createScene = async () => {
                      // player.radiusChangeSpeed = getRandomInRange(radiusChangeSpeedRange[0], radiusChangeSpeedRange[1]);
                 }
 
-                const circleMat = player.circleMesh.material || new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+                // const circleMat = player.circleMesh.material || new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
                 if (player.juggleCount >= 10) {
-                    circleMat.emissiveColor = new BABYLON.Color3(1, 0, 0); // Red when max reached
+                    player.circleMesh.material.emissiveColor = new BABYLON.Color3(1, 0, 0); // Red when max reached
                 } else {
-                    circleMat.emissiveColor = new BABYLON.Color3(0, 1, 0.5); // Normal color
+                    player.circleMesh.material.emissiveColor = new BABYLON.Color3(0, 1, 0.5); // Normal color
                 }
-                player.circleMesh.material = circleMat;
+                // player.circleMesh.material = circleMat;
 
                 // Animate current radius towards target radius
                 player.currentRadius = BABYLON.Scalar.Lerp(
@@ -450,8 +452,8 @@ const createScene = async () => {
 
                 // Update circle mesh scale (relative to base radius)
                 const scale = player.currentRadius / baseCircleLineRadius;
-                player.circleMesh.scaling.x = scale;
-                player.circleMesh.scaling.z = scale;
+                player.circleMesh.mesh.scaling.x = scale;
+                player.circleMesh.mesh.scaling.z = scale;
             }
 
             // --- Movement Logic (Only for active player) ---
