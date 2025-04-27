@@ -12,6 +12,30 @@
             color: white; font-size: 1.5em; background-color: rgba(0, 0, 0, 0.7);
             padding: 15px; border-radius: 8px; z-index: 10; display: none;
         }
+        #scorePanel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 1.2em;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+        #gameOverText {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            font-size: 2em;
+            background-color: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            z-index: 11;
+            display: none;
+        }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -20,7 +44,19 @@
 <body>
 <canvas id="renderCanvas"></canvas>
 <div id="loadingText">Loading Models...</div>
+<div id="scorePanel">
+    Score: <span id="scoreValue">0</span><br>
+    High Score: <span id="highScoreValue">0</span>
+</div>
+<div id="gameOverText">GAME OVER!</div>
 <script>
+let gameStarted = false;
+let score = 0;
+let highScore = 0;
+let groundContacts = 0;
+let gameOver = false;
+
+
 const canvas = document.getElementById('renderCanvas');
 const loadingText = document.getElementById('loadingText');
 const engine = new BABYLON.Engine(canvas, true);
@@ -102,6 +138,7 @@ const createScene = async () => {
             currentAnim: null,
             isMoving: false,
             nextJuggleFoot: 'left',
+            juggleCount: 0,
             isJuggling: false,
             juggleTimeout: null,
             // Dynamic Circle Properties
@@ -133,30 +170,32 @@ const createScene = async () => {
         const deltaTheta = (2 * Math.PI) / circlePoints;
         for (let i = 0; i <= circlePoints; i++) {
             const theta = i * deltaTheta;
-            // Generate points in the XZ plane (Y=0)
             points.push(new BABYLON.Vector3(baseRadius * Math.cos(theta), 0, baseRadius * Math.sin(theta)));
         }
 
         const circleLine = BABYLON.MeshBuilder.CreateLines(`circleLine_${player.mesh.id}`, {
             points: points,
-            updatable: false // Not updating points, only scaling
+            updatable: false
         }, scene);
 
-        circleLine.color = new BABYLON.Color3(0.5, 0.7, 1); // Light blue color for the outline
+        // Create a material for the circle line
+        const material = new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+        material.emissiveColor = new BABYLON.Color3(0, 0.7, 1); // Initial blue color
+        material.disableLighting = true; // Make it visible without lights
+        circleLine.material = material;
 
-        // REMOVED -> circleLine.rotation.x = Math.PI / 2; <- REMOVED This line to keep the circle flat
-
-        circleLine.position = new BABYLON.Vector3(0, 0.02, 0); // Position slightly above ground to avoid z-fighting
-        circleLine.parent = player.mesh; // Parent to player
+        circleLine.position = new BABYLON.Vector3(0, 0.02, 0);
+        circleLine.parent = player.mesh;
         circleLine.isPickable = false;
 
-        // Initial scale based on current radius
         const initialScale = player.currentRadius / baseRadius;
         circleLine.scaling.x = initialScale;
-        circleLine.scaling.z = initialScale; // Scale uniformly in X and Z
+        circleLine.scaling.z = initialScale;
 
-
-        player.circleMesh = circleLine; // Store reference in player object
+        player.circleMesh = {
+            mesh: circleLine,
+            material: material // Store material reference
+        };
     }
 
 
@@ -234,50 +273,87 @@ const createScene = async () => {
 
         // --- Ball Spawning ('space' key) ---
         if (evt.sourceEvent.key === ' ') {
-             const currentPlayer = players[activePlayerIndex];
-             const numPlayers = players.length;
+            if (gameStarted) {
+                // Prevent multiple starts
+                return;
+            }
+            if (!gameStarted) {
+                // Initialize new game
+                gameStarted = true;
+                gameOver = false;
+                score = 0;
+                groundContacts = 0;
+                document.getElementById('gameOverText').style.display = 'none';
+                document.getElementById('scoreValue').textContent = '0';
+                
+                if(currentBall) {
+                    currentBall.dispose();
+                    currentBall = null;
+                }
+                const currentPlayer = players[activePlayerIndex];
+                const numPlayers = players.length;
 
-             if(currentBall) {
-                currentBall.dispose();
-                currentBall = null;
-             }
+                const playerForward = currentPlayer.mesh.forward.scale(-1);
+                playerForward.y = 0;
+                playerForward.normalize();
+                const spawnPos = currentPlayer.mesh.getAbsolutePosition().add(new BABYLON.Vector3(0, 2.0, 0));
 
-            const playerForward = currentPlayer.mesh.forward.scale(-1);
-             playerForward.y = 0;
-             playerForward.normalize();
-            const spawnPos = currentPlayer.mesh.getAbsolutePosition().add(new BABYLON.Vector3(0, 2.0, 0));
+                currentBall = BABYLON.MeshBuilder.CreateSphere("ball", { diameter: 0.25 }, scene);
+                currentBall.position = spawnPos;
+                currentBall.material = new BABYLON.StandardMaterial("ballMat", scene);
+                currentBall.material.diffuseColor = new BABYLON.Color3(1, 1, 1);
+                currentBall.material.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
 
-            currentBall = BABYLON.MeshBuilder.CreateSphere("ball", { diameter: 0.25 }, scene);
-            currentBall.position = spawnPos;
-            currentBall.material = new BABYLON.StandardMaterial("ballMat", scene);
-            currentBall.material.diffuseColor = new BABYLON.Color3(1, 1, 1);
-            currentBall.material.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+                currentBall.physicsImpostor = new BABYLON.PhysicsImpostor(
+                    currentBall,
+                    BABYLON.PhysicsImpostor.SphereImpostor,
+                    { mass: 1.5, restitution: 0.7, friction: 2.5 },
+                    scene
+                );
 
-            currentBall.physicsImpostor = new BABYLON.PhysicsImpostor(
-                currentBall,
-                BABYLON.PhysicsImpostor.SphereImpostor,
-                { mass: 1.5, restitution: 0.7, friction: 2.5 },
-                scene
-            );
+                if (numPlayers > 1) {
+                    const previousPlayerIndex = activePlayerIndex;
+                    setPlayerIdle(players[previousPlayerIndex]);
 
-            if (numPlayers > 1) {
-                 const previousPlayerIndex = activePlayerIndex;
-                 setPlayerIdle(players[previousPlayerIndex]);
+                    let nextIndex = (activePlayerIndex + 1) % numPlayers;
+                    let safetyCounter = 0;
+                    while (players[nextIndex].isJuggling && safetyCounter < numPlayers) {
+                        nextIndex = (nextIndex + 1) % numPlayers;
+                        safetyCounter++;
+                    }
+                    if (safetyCounter === numPlayers) {
+                        nextIndex = (activePlayerIndex + 1) % numPlayers;
+                    }
+                    activePlayerIndex = nextIndex;
+                    updateActivePlayer();
+                    if(!players[activePlayerIndex].isMoving && !players[activePlayerIndex].isJuggling) {
+                        setPlayerIdle(players[activePlayerIndex]);
+                    }
+                }
 
-                 let nextIndex = (activePlayerIndex + 1) % numPlayers;
-                 let safetyCounter = 0;
-                 while (players[nextIndex].isJuggling && safetyCounter < numPlayers) {
-                     nextIndex = (nextIndex + 1) % numPlayers;
-                     safetyCounter++;
-                 }
-                 if (safetyCounter === numPlayers) {
-                     nextIndex = (activePlayerIndex + 1) % numPlayers;
-                 }
-                 activePlayerIndex = nextIndex;
-                 updateActivePlayer();
-                  if(!players[activePlayerIndex].isMoving && !players[activePlayerIndex].isJuggling) {
-                    setPlayerIdle(players[activePlayerIndex]);
-                 }
+                // Add collision observer for the ball
+                currentBall.physicsImpostor.registerOnPhysicsCollide(
+                    ground.physicsImpostor,
+                    function(main, collided) {
+                        if (!gameOver) {
+                            groundContacts++;
+                            if (groundContacts >= 5) {
+                                gameOver = true;
+                                document.getElementById('gameOverText').style.display = 'block';
+                                if(score > highScore) {
+                                    highScore = score;
+                                    document.getElementById('highScoreValue').textContent = highScore;
+                                }
+                                currentBall.physicsImpostor.dispose();
+                                gameStarted = false;
+                            }
+                        }
+                    }
+                );
+            }else if (gameOver) {
+                // Allow restart only if game was over
+                gameStarted = false;
+                document.getElementById('gameOverText').style.display = 'none';
             }
         }
 
@@ -305,7 +381,8 @@ const createScene = async () => {
 
              if (distance < combinedRadius) {
                  console.log("Intersection detected! Passing ball.");
-
+                 jugglingPlayer.juggleCount = 0;
+                 targetPlayer.juggleCount = 0;
                  const passOriginPos = jugglePos.add(new BABYLON.Vector3(0, 0.3, 0));
                  if (!targetPlayer.mesh.rotationQuaternion) targetPlayer.mesh.rotationQuaternion = BABYLON.Quaternion.Identity();
                  const targetPlayerForward = targetPlayer.mesh.forward.scale(-1).normalize();
@@ -358,6 +435,14 @@ const createScene = async () => {
                      // player.radiusChangeSpeed = getRandomInRange(radiusChangeSpeedRange[0], radiusChangeSpeedRange[1]);
                 }
 
+                // const circleMat = player.circleMesh.material || new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+                if (player.juggleCount >= 10) {
+                    player.circleMesh.material.emissiveColor = new BABYLON.Color3(1, 0, 0); // Red when max reached
+                } else {
+                    player.circleMesh.material.emissiveColor = new BABYLON.Color3(0, 1, 0.5); // Normal color
+                }
+                // player.circleMesh.material = circleMat;
+
                 // Animate current radius towards target radius
                 player.currentRadius = BABYLON.Scalar.Lerp(
                     player.currentRadius,
@@ -367,8 +452,8 @@ const createScene = async () => {
 
                 // Update circle mesh scale (relative to base radius)
                 const scale = player.currentRadius / baseCircleLineRadius;
-                player.circleMesh.scaling.x = scale;
-                player.circleMesh.scaling.z = scale;
+                player.circleMesh.mesh.scaling.x = scale;
+                player.circleMesh.mesh.scaling.z = scale;
             }
 
             // --- Movement Logic (Only for active player) ---
@@ -429,6 +514,8 @@ const createScene = async () => {
 
     // --- Juggling Logic (Mouse Click) ---
     canvas.addEventListener("pointerdown", function (evt) {
+        if (!gameStarted || gameOver) return;
+
         if (evt.button === 0 && currentBall && currentBall.physicsImpostor) {
             const ballPos = currentBall.getAbsolutePosition();
             let nearestPlayer = null;
@@ -466,6 +553,17 @@ const createScene = async () => {
 
                 clearTimeout(jugglingPlayer.juggleTimeout);
                 jugglingPlayer.isJuggling = true;
+                
+                if (jugglingPlayer.juggleCount < 10) {
+                    score++;
+                    document.getElementById('scoreValue').textContent = score;
+                    if(score > highScore) {
+                        highScore = score;
+                        document.getElementById('highScoreValue').textContent = highScore;
+                    }
+                    jugglingPlayer.juggleCount++;
+                }
+
                 jugglingPlayer.juggleTimeout = setTimeout(() => {
                     jugglingPlayer.isJuggling = false;
                     if (!jugglingPlayer.isMoving && jugglingPlayer.currentAnim !== jugglingPlayer.anims.idle) {
@@ -498,6 +596,8 @@ const createScene = async () => {
                             setPlayerIdle(jugglingPlayer);
                         }
                     });
+
+
                 } else {
                     console.warn(`Animation ${animName} not found for player.`);
                 }
