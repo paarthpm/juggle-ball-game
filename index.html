@@ -173,7 +173,6 @@
         camera.lowerRadiusLimit = 5;
         camera.upperRadiusLimit = 30;
 
-
         const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
         light.intensity = 3;
 
@@ -207,95 +206,38 @@
         arrow.rotation.x = Math.PI;
         arrow.position.y = 2.5;
 
-       
-
-        
-
+        // Displaying loading text on load
         loadingText.style.display = 'block';
 
-        // --- Create Player Circle Outline Function ---
-        // --- Create Player Circle Outline Function (MODIFIED) ---
-        function createPlayerCircleOutline(player, baseRadius) {
-            const points = [];
-            const deltaTheta = (2 * Math.PI) / circlePoints;
-            for (let i = 0; i <= circlePoints; i++) {
-                const theta = i * deltaTheta;
-                points.push(new BABYLON.Vector3(baseRadius * Math.cos(theta), 0, baseRadius * Math.sin(theta)));
-            }
-
-            const circleLine = BABYLON.MeshBuilder.CreateLines(`circleLine_${player.mesh.id}`, {
-                points: points,
-                updatable: false
-            }, scene);
-
-            // Create a material for the circle line
-            const material = new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
-            material.emissiveColor = new BABYLON.Color3(0, 0.7, 1); // Initial blue color
-            material.disableLighting = true; // Make it visible without lights
-            circleLine.material = material;
-
-            circleLine.position = new BABYLON.Vector3(0, 0.02, 0);
-            circleLine.parent = player.mesh;
-            circleLine.isPickable = false;
-
-            const initialScale = player.currentRadius / baseRadius;
-            circleLine.scaling.x = initialScale;
-            circleLine.scaling.z = initialScale;
-
-            player.circleMesh = {
-                mesh: circleLine,
-                material: material // Store material reference
-            };
-        }
-
-
+        // Loading players in positions defined
         const positions = [new BABYLON.Vector3(-5, 0, 0), new BABYLON.Vector3(0, 0, 0), new BABYLON.Vector3(5, 0, 0)];
         for (let i = 0; i < 3; i++) {
             players.push(await loadPlayer(positions[i], modelPath, scene));
         }
 
-        // Create the circle outlines AFTER players are loaded
+        // Create the circle outlines after players are loaded
         for (let i = 0; i < players.length; i++) {
-            createPlayerCircleOutline(players[i], baseCircleLineRadius);
+            createPlayerCircleOutline(players[i], baseCircleLineRadius, circlePoints, scene);
         }
 
+        // Hiding loading text after player load success
         loadingText.style.display = 'none';
 
-        function updateActivePlayer() {
-            if (players.length > 0 && activePlayerIndex >= 0 && activePlayerIndex < players.length) {
-            arrow.parent = players[activePlayerIndex].mesh;
-            } else {
-            arrow.parent = null;
-            }
-        }
+        // Arrow displayed on the first player
+        updateActivePlayer(players, activePlayerIndex, arrow);
 
-        updateActivePlayer();
-
+        // Showing notice to start the game
         showNotice("Click and press space key to start the game", 4000);
-
-        function setPlayerIdle(player) {
-            if (!player || !player.anims?.idle) return;
-            if (player.currentAnim && player.currentAnim !== player.anims.idle) {
-                player.currentAnim.stop();
-            }
-            if (player.currentAnim !== player.anims.idle) {
-                player.anims.idle.start(true, 1.0, player.anims.idle.from, player.anims.idle.to, false);
-                player.currentAnim = player.anims.idle;
-            } else if (!player.anims.idle.isPlaying) {
-                player.anims.idle.start(true, 1.0, player.anims.idle.from, player.anims.idle.to, false);
-            }
-            player.isMoving = false;
-        }
 
         const inputMap = {};
         scene.actionManager = new BABYLON.ActionManager(scene);
 
-        // --- Key Down Actions ---
+        // Key Down Actions
         scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, evt => {
             const key = evt.sourceEvent.key.toLowerCase();
             inputMap[key] = true;
 
-            // --- Player Switching ('f' key) ---
+            // Player Switching ('f' key)
             if (key === 'f') {
                 const previousPlayerIndex = activePlayerIndex;
                 const numPlayers = players.length;
@@ -316,46 +258,51 @@
                 if (activePlayerIndex !== nextIndex) {
                     setPlayerIdle(players[previousPlayerIndex]);
                     activePlayerIndex = nextIndex;
-                    updateActivePlayer();
+                    updateActivePlayer(players, activePlayerIndex, arrow);
                     if(!players[activePlayerIndex].isMoving && !players[activePlayerIndex].isJuggling) {
                         setPlayerIdle(players[activePlayerIndex]);
                     }
                 }
             }
 
-            // --- Ball Spawning ('space' key) ---
+            // Ball Spawning ('space' key) 
             if (evt.sourceEvent.key === ' ') {
                 if (gameStarted) {
                     // Prevent multiple starts
                     return;
                 }
+
                 if (!gameStarted) {
-                    // Initialize new game
+                    // Initializing new game
                     gameStarted = true;
                     gameOver = false;
                     score = 0;
                     groundContacts = 0;
+
+                    // Hiding game over text and resetting score
                     document.getElementById('gameOverText').style.display = 'none';
                     document.getElementById('scoreValue').textContent = '0';
                     
+                    // Destroying current ball if exists
                     if(currentBall) {
                         currentBall.dispose();
                         currentBall = null;
                     }
+
                     const currentPlayer = players[activePlayerIndex];
                     const numPlayers = players.length;
 
-                    const playerForward = currentPlayer.mesh.forward.scale(-1);
-                    playerForward.y = 0;
-                    playerForward.normalize();
+                    // Ball positioned above the current active player
                     const spawnPos = currentPlayer.mesh.getAbsolutePosition().add(new BABYLON.Vector3(0, 2.0, 0));
 
+                    // Creating a ball
                     currentBall = BABYLON.MeshBuilder.CreateSphere("ball", { diameter: 0.25 }, scene);
                     currentBall.position = spawnPos;
                     currentBall.material = new BABYLON.StandardMaterial("ballMat", scene);
                     currentBall.material.diffuseColor = new BABYLON.Color3(0.6, 0.4, 0.2);
                     currentBall.material.specularColor = new BABYLON.Color3(0.6, 0.4, 0.2);
 
+                    // Adding physics to ball
                     currentBall.physicsImpostor = new BABYLON.PhysicsImpostor(
                         currentBall,
                         BABYLON.PhysicsImpostor.SphereImpostor,
@@ -364,9 +311,11 @@
                     );
 
                     if (numPlayers > 1) {
+                        // Setting other players idle
                         const previousPlayerIndex = activePlayerIndex;
                         setPlayerIdle(players[previousPlayerIndex]);
 
+                        // Once ball is positioned above the current active player, the active player status is changed to the next player
                         let nextIndex = (activePlayerIndex + 1) % numPlayers;
                         let safetyCounter = 0;
                         while (players[nextIndex].isJuggling && safetyCounter < numPlayers) {
@@ -377,25 +326,28 @@
                             nextIndex = (activePlayerIndex + 1) % numPlayers;
                         }
                         activePlayerIndex = nextIndex;
-                        updateActivePlayer();
+                        updateActivePlayer(players, activePlayerIndex, arrow);
                         if(!players[activePlayerIndex].isMoving && !players[activePlayerIndex].isJuggling) {
                             setPlayerIdle(players[activePlayerIndex]);
                         }
                     }
 
-                    // Add collision observer for the ball
+                    // Adding collision observer for the ball
                     currentBall.physicsImpostor.registerOnPhysicsCollide(
                         ground.physicsImpostor,
                         function(main, collided) {
+                            // If ball touches the ground more than 5 times, the game is over
                             if (!gameOver) {
                                 groundContacts++;
                                 if (groundContacts >= 5) {
                                     gameOver = true;
                                     document.getElementById('gameOverText').style.display = 'block';
+                                    // Updates high score if score > high score
                                     if(score > highScore) {
                                         highScore = score;
                                         document.getElementById('highScoreValue').textContent = highScore;
                                     }
+                                    // The current ball is disposed
                                     currentBall.physicsImpostor.dispose();
                                     gameStarted = false;
                                 }
@@ -403,22 +355,25 @@
                         }
                     );
                 }else if (gameOver) {
-                    // Allow restart only if game was over
+                    // Allowing restart only if game was over
                     gameStarted = false;
                     document.getElementById('gameOverText').style.display = 'none';
                 }
             }
 
-            // --- Ball Passing ('o' key) ---
+            // Ball Passing ('o' key)
             if (key === 'o') {
+                // Cannot pass if no ball exists
                 if (!currentBall || !currentBall.physicsImpostor) return;
 
+                // Finding the juggling player
                 const jugglingPlayer = players.find(p => p.isJuggling);
                 if (!jugglingPlayer) {
                     console.log("No player is currently juggling.");
                     return;
                 }
 
+                // The juggling player cannot pass to oneself
                 const targetPlayer = players[activePlayerIndex];
                 if (jugglingPlayer === targetPlayer) {
                     console.log("Cannot pass to self.");
@@ -426,16 +381,22 @@
                     return;
                 }
 
+                // Getting positions of the juggling and the target player (the player with arrows)
                 const jugglePos = jugglingPlayer.mesh.getAbsolutePosition();
                 const targetPos = targetPlayer.mesh.getAbsolutePosition();
                 const distance = BABYLON.Vector3.Distance(jugglePos, targetPos);
-                // Use CURRENT dynamic radii for intersection check
+
+                // Checking dynamic radii for intersection check
                 const combinedRadius = jugglingPlayer.currentRadius + targetPlayer.currentRadius;
 
+                // Only if the circle intersects the pass is possible
                 if (distance < combinedRadius) {
                     console.log("Intersection detected! Passing ball.");
+                    // Juggle count resets for both the players
                     jugglingPlayer.juggleCount = 0;
                     targetPlayer.juggleCount = 0;
+
+                    // Passing the ball in projectile path
                     const passOriginPos = jugglePos.add(new BABYLON.Vector3(0, 0.3, 0));
                     if (!targetPlayer.mesh.rotationQuaternion) targetPlayer.mesh.rotationQuaternion = BABYLON.Quaternion.Identity();
                     const targetPlayerForward = targetPlayer.mesh.forward.scale(-1).normalize();
@@ -449,8 +410,10 @@
                     const velocity = new BABYLON.Vector3(vx, vy, vz);
                     const impulse = velocity.scale(currentBall.physicsImpostor.mass);
                     const ballPos = currentBall.getAbsolutePosition();
+                    // The ball is passed to the target player
                     currentBall.physicsImpostor.applyImpulse(impulse, ballPos);
 
+                    // Making the juggling player idle after pass is complete
                     clearTimeout(jugglingPlayer.juggleTimeout);
                     jugglingPlayer.isJuggling = false;
                     setPlayerIdle(jugglingPlayer);
@@ -463,21 +426,126 @@
 
         }));
 
-        // --- Key Up Actions ---
+        // Key Up Actions, required as without keyup the key down will continue infinetly
         scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, evt => {
             inputMap[evt.sourceEvent.key.toLowerCase()] = false;
         }));
 
-        // --- Update Loop ---
+        // Juggling Logic (Mouse Click)
+        canvas.addEventListener("pointerdown", function (evt) {
+            // Will not work if game is over or not started
+            if (!gameStarted || gameOver) return;
+
+            if (evt.button === 0 && currentBall && currentBall.physicsImpostor) {
+                const ballPos = currentBall.getAbsolutePosition();
+                let nearestPlayer = null;
+                let minDistanceSq = jugglingThreshold * jugglingThreshold;
+
+                players.forEach((player, index) => {
+                    const playerPos = player.mesh.getAbsolutePosition();
+                    const distanceSq = BABYLON.Vector3.DistanceSquared(playerPos, ballPos);
+                    if (distanceSq < minDistanceSq) {
+                        minDistanceSq = distanceSq;
+                        nearestPlayer = player;
+                    }
+                });
+                
+                // Juggling only works if a player is close enough
+                if (nearestPlayer) {
+                    const playerPos = nearestPlayer.mesh.getAbsolutePosition();
+                    const distanceSq = BABYLON.Vector3.DistanceSquared(playerPos, ballPos);
+
+                    if (distanceSq <= jugglingThreshold * jugglingThreshold) {
+                        const velocity = currentBall.physicsImpostor.getLinearVelocity();
+                        if (velocity) {
+                            // Only vertical movement is given when juggling, others not. makes ball go straight up
+                            velocity.x = 0;
+                            velocity.z = 0;
+                            currentBall.physicsImpostor.setLinearVelocity(velocity);
+                        }
+                    }
+
+                    // Juggling force and jump height
+                    const impulseY = 5;
+                    const impulseDirection = new BABYLON.Vector3(0, impulseY, 0);
+
+                    // Adding physics to the juggling ball
+                    currentBall.physicsImpostor.applyImpulse(impulseDirection, ballPos);
+
+                    const jugglingPlayer = nearestPlayer;
+                    clearTimeout(jugglingPlayer.juggleTimeout);
+                    jugglingPlayer.isJuggling = true;
+                    
+                    // Score increases only if the juggle count is less than 10 after ball is received by the player
+                    if (jugglingPlayer.juggleCount < 10) {
+                        score++;
+                        document.getElementById('scoreValue').textContent = score;
+                        if(score > highScore) {
+                            highScore = score;
+                            document.getElementById('highScoreValue').textContent = highScore;
+                        }
+                        jugglingPlayer.juggleCount++;
+                    }
+
+                    // Juggling stops after 1.5 sec if not continued with mouse clicks. Makes player idle again. 
+                    jugglingPlayer.juggleTimeout = setTimeout(() => {
+                        jugglingPlayer.isJuggling = false;
+                        if (!jugglingPlayer.isMoving && jugglingPlayer.currentAnim !== jugglingPlayer.anims.idle) {
+                            setPlayerIdle(jugglingPlayer);
+                        }
+                    }, 1500);
+                    
+                    // Only one player juggles at a time
+                    players.forEach(p => {
+                        if (p !== jugglingPlayer && p.isJuggling) {
+                            clearTimeout(p.juggleTimeout);
+                            p.isJuggling = false;
+                            if (!p.isMoving) setPlayerIdle(p);
+                        }
+                    });
+
+                    // Toggling animation between left and right foot when juggling
+                    const animName = jugglingPlayer.nextJuggleFoot === 'left' ? 'leftFootPlay' : 'rightFootPlay';
+                    const animGroup = jugglingPlayer.anims[animName];
+
+                    if (animGroup) {
+                        if (jugglingPlayer.currentAnim && jugglingPlayer.currentAnim !== animGroup) {
+                        jugglingPlayer.currentAnim.stop();
+                        }
+                        animGroup.start(false, 1.2, animGroup.from, animGroup.to, false);
+                        jugglingPlayer.currentAnim = animGroup;
+                        jugglingPlayer.isMoving = false;
+                        jugglingPlayer.nextJuggleFoot = (jugglingPlayer.nextJuggleFoot === 'left' ? 'right' : 'left');
+
+                        animGroup.onAnimationEndObservable.addOnce(() => {
+                            if (!jugglingPlayer.isJuggling && jugglingPlayer.currentAnim === animGroup && !jugglingPlayer.isMoving) {
+                                setPlayerIdle(jugglingPlayer);
+                            }
+                        });
+                    } else {
+                        console.warn(`Animation ${animName} not found for player.`);
+                    }
+
+                    // Player faces the ball when juggling
+                    // const lookTarget = ballPos.clone();
+                    // lookTarget.y = jugglingPlayer.mesh.position.y;
+                    // if (!jugglingPlayer.mesh.rotationQuaternion) jugglingPlayer.mesh.rotationQuaternion = BABYLON.Quaternion.Identity();
+                    // jugglingPlayer.mesh.lookAt(lookTarget);
+                }
+            }
+        });
+
+        // Movements
         const moveSpeed = 3.0;
+        // Scene updates just before rendering
         scene.onBeforeRenderObservable.add(() => {
             const dt = engine.getDeltaTime() / 1000; // Delta time in seconds
 
-            // --- Update Player Logic (Movement & Circles) ---
+            // Player Logic (Movement & Circles) ---
             players.forEach((player, index) => {
                 const mesh = player.mesh;
 
-                // --- Dynamic Circle Update ---
+                // Dynamic Circle Update
                 if (player.circleMesh) {
                     // Check if target radius reached (within a small threshold)
                     if (Math.abs(player.currentRadius - player.currentTargetRadius) < 0.05) {
@@ -485,17 +553,14 @@
                         player.currentTargetRadius = (player.currentTargetRadius === player.minCircleRadius)
                             ? player.maxCircleRadius
                             : player.minCircleRadius;
-                        // Optional: Pick a new speed as well
-                        // player.radiusChangeSpeed = getRandomInRange(radiusChangeSpeedRange[0], radiusChangeSpeedRange[1]);
                     }
 
-                    // const circleMat = player.circleMesh.material || new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+                    // Changin the circle color to red with juggle count exceed 10
                     if (player.juggleCount >= 10) {
                         player.circleMesh.material.emissiveColor = new BABYLON.Color3(1, 0, 0); // Red when max reached
                     } else {
                         player.circleMesh.material.emissiveColor = new BABYLON.Color3(0, 1, 0.5); // Normal color
                     }
-                    // player.circleMesh.material = circleMat;
 
                     // Animate current radius towards target radius
                     player.currentRadius = BABYLON.Scalar.Lerp(
@@ -510,7 +575,7 @@
                     player.circleMesh.mesh.scaling.z = scale;
                 }
 
-                // --- Movement Logic (Only for active player) ---
+                // Movement Logic (Only for active player)
                 if (index === activePlayerIndex) {
                     let moveDirection = BABYLON.Vector3.Zero();
                     const forward = camera.getDirection(BABYLON.Axis.Z);
@@ -535,6 +600,7 @@
                             0.15
                         );
 
+                        // Animation setting to walk
                         if (!player.isMoving && player.anims.walk && player.currentAnim !== player.anims.walk && !player.isJuggling) {
                             if (player.currentAnim) player.currentAnim.stop();
                             player.anims.walk.start(true, 1.0, player.anims.walk.from, player.anims.walk.to, false);
@@ -542,6 +608,7 @@
                             player.isMoving = true;
                         }
                     } else {
+                        // Animation setting to idle
                         if (player.isMoving && !player.isJuggling) {
                             if (player.currentAnim === player.anims.walk) {
                                 player.anims.walk.stop();
@@ -551,12 +618,12 @@
                             player.isMoving = false; // Ensure isMoving is set false AFTER setting idle
                         }
                     }
-                    // Update camera target smoothly only for the active player
+                    // Updating camera target smoothly only for the active player
                     camera.target = BABYLON.Vector3.Lerp(camera.target, mesh.position.add(new BABYLON.Vector3(0,1,0)), 0.05);
                 } // End active player movement logic
             }); // End loop through players
 
-
+            // Ball control wrt position in the scene
             if (currentBall && gameStarted && !gameOver) {
                 const ballPos = currentBall.getAbsolutePosition();
                 
@@ -569,9 +636,11 @@
                     Math.abs(ballPos.z) > groundBoundary || 
                     ballPos.y < minY) {
                     
+                    // If ball goes out of the ground
                     gameOver = true;
                     document.getElementById('gameOverText').style.display = 'block';
                     
+                    // High score updates
                     if(score > highScore) {
                         highScore = score;
                         document.getElementById('highScoreValue').textContent = highScore;
@@ -587,113 +656,13 @@
 
             // Arrow update (ensure parent still correct)
             if (players[activePlayerIndex] && arrow.parent !== players[activePlayerIndex].mesh) {
-                updateActivePlayer(); // Re-attach if needed
+                updateActivePlayer(players, activePlayerIndex, arrow); // Re-attach if needed
             } else if (arrow.parent) {
                 arrow.position.y = 2.5; // Maintain relative height if parented
             }
 
         }); // End onBeforeRenderObservable
-
-        // --- Juggling Logic (Mouse Click) ---
-        canvas.addEventListener("pointerdown", function (evt) {
-            if (!gameStarted || gameOver) return;
-
-            if (evt.button === 0 && currentBall && currentBall.physicsImpostor) {
-                const ballPos = currentBall.getAbsolutePosition();
-                let nearestPlayer = null;
-                let minDistanceSq = jugglingThreshold * jugglingThreshold;
-
-                players.forEach((player, index) => {
-                    const playerPos = player.mesh.getAbsolutePosition();
-                    const distanceSq = BABYLON.Vector3.DistanceSquared(playerPos, ballPos);
-                    if (distanceSq < minDistanceSq) {
-                        minDistanceSq = distanceSq;
-                        nearestPlayer = player;
-                    }
-                });
-                
-                // If a player is close enough
-                if (nearestPlayer) {
-                    const playerPos = nearestPlayer.mesh.getAbsolutePosition();
-                    const distanceSq = BABYLON.Vector3.DistanceSquared(playerPos, ballPos);
-
-                    if (distanceSq <= jugglingThreshold * jugglingThreshold) {
-                        const velocity = currentBall.physicsImpostor.getLinearVelocity();
-                        if (velocity) {
-                            velocity.x = 0;
-                            velocity.z = 0;
-                            currentBall.physicsImpostor.setLinearVelocity(velocity);
-                        }
-                    }
-
-                    const impulseY = 5;
-                    const impulseDirection = new BABYLON.Vector3(0, impulseY, 0);
-                    currentBall.physicsImpostor.applyImpulse(impulseDirection, ballPos);
-
-
-                    const jugglingPlayer = nearestPlayer;
-
-                    clearTimeout(jugglingPlayer.juggleTimeout);
-                    jugglingPlayer.isJuggling = true;
-                    
-                    if (jugglingPlayer.juggleCount < 10) {
-                        score++;
-                        document.getElementById('scoreValue').textContent = score;
-                        if(score > highScore) {
-                            highScore = score;
-                            document.getElementById('highScoreValue').textContent = highScore;
-                        }
-                        jugglingPlayer.juggleCount++;
-                    }
-
-                    jugglingPlayer.juggleTimeout = setTimeout(() => {
-                        jugglingPlayer.isJuggling = false;
-                        if (!jugglingPlayer.isMoving && jugglingPlayer.currentAnim !== jugglingPlayer.anims.idle) {
-                            setPlayerIdle(jugglingPlayer);
-                        }
-                    }, 1500);
-
-                    players.forEach(p => {
-                        if (p !== jugglingPlayer && p.isJuggling) {
-                            clearTimeout(p.juggleTimeout);
-                            p.isJuggling = false;
-                            if (!p.isMoving) setPlayerIdle(p);
-                        }
-                    });
-
-                    const animName = jugglingPlayer.nextJuggleFoot === 'left' ? 'leftFootPlay' : 'rightFootPlay';
-                    const animGroup = jugglingPlayer.anims[animName];
-
-                    if (animGroup) {
-                        if (jugglingPlayer.currentAnim && jugglingPlayer.currentAnim !== animGroup) {
-                        jugglingPlayer.currentAnim.stop();
-                        }
-                        animGroup.start(false, 1.2, animGroup.from, animGroup.to, false);
-                        jugglingPlayer.currentAnim = animGroup;
-                        jugglingPlayer.isMoving = false;
-                        jugglingPlayer.nextJuggleFoot = (jugglingPlayer.nextJuggleFoot === 'left' ? 'right' : 'left');
-
-                        animGroup.onAnimationEndObservable.addOnce(() => {
-                            if (!jugglingPlayer.isJuggling && jugglingPlayer.currentAnim === animGroup && !jugglingPlayer.isMoving) {
-                                setPlayerIdle(jugglingPlayer);
-                            }
-                        });
-
-
-                    } else {
-                        console.warn(`Animation ${animName} not found for player.`);
-                    }
-
-                    const lookTarget = ballPos.clone();
-                    lookTarget.y = jugglingPlayer.mesh.position.y;
-                    if (!jugglingPlayer.mesh.rotationQuaternion) jugglingPlayer.mesh.rotationQuaternion = BABYLON.Quaternion.Identity();
-                    jugglingPlayer.mesh.lookAt(lookTarget);
-                }
-
-                
-            }
-        });
-
+        
         return scene;
     };
 
@@ -708,7 +677,7 @@
     window.addEventListener("resize", () => engine.resize());
     
     // Load player in the canvas
-    async function loadPlayer(position, modelPath, scene) {
+    async function loadPlayer(position, modelPath, scene,) {
         const result = await BABYLON.SceneLoader.ImportMeshAsync("", modelPath, "", scene);
         const root = result.meshes[0];
         root.position = position;
@@ -754,6 +723,64 @@
         }
 
         return player;
+    }
+
+    // Circle below the players
+    function createPlayerCircleOutline(player, baseRadius, circlePoints, scene) {
+        const points = [];
+        const deltaTheta = (2 * Math.PI) / circlePoints;
+        for (let i = 0; i <= circlePoints; i++) {
+            const theta = i * deltaTheta;
+            points.push(new BABYLON.Vector3(baseRadius * Math.cos(theta), 0, baseRadius * Math.sin(theta)));
+        }
+
+        const circleLine = BABYLON.MeshBuilder.CreateLines(`circleLine_${player.mesh.id}`, {
+            points: points,
+            updatable: false
+        }, scene);
+
+        // Create a material for the circle line
+        const material = new BABYLON.StandardMaterial(`circleMat_${player.mesh.id}`, scene);
+        material.emissiveColor = new BABYLON.Color3(0, 0.7, 1); // Initial blue color
+        material.disableLighting = true; // Make it visible without lights
+        circleLine.material = material;
+
+        circleLine.position = new BABYLON.Vector3(0, 0.02, 0);
+        circleLine.parent = player.mesh;
+        circleLine.isPickable = false;
+
+        const initialScale = player.currentRadius / baseRadius;
+        circleLine.scaling.x = initialScale;
+        circleLine.scaling.z = initialScale;
+
+        player.circleMesh = {
+            mesh: circleLine,
+            material: material // Store material reference
+        };
+    }
+
+    // Upating active player function when key O is pressed and on page load
+    function updateActivePlayer(players, activePlayerIndex, arrow) {
+        if (players.length > 0 && activePlayerIndex >= 0 && activePlayerIndex < players.length) {
+        arrow.parent = players[activePlayerIndex].mesh;
+        } else {
+        arrow.parent = null;
+        }
+    }
+
+    // Setting player idle animation
+    function setPlayerIdle(player) {
+        if (!player || !player.anims?.idle) return;
+        if (player.currentAnim && player.currentAnim !== player.anims.idle) {
+            player.currentAnim.stop();
+        }
+        if (player.currentAnim !== player.anims.idle) {
+            player.anims.idle.start(true, 1.0, player.anims.idle.from, player.anims.idle.to, false);
+            player.currentAnim = player.anims.idle;
+        } else if (!player.anims.idle.isPlaying) {
+            player.anims.idle.start(true, 1.0, player.anims.idle.from, player.anims.idle.to, false);
+        }
+        player.isMoving = false;
     }
 
     // Helper function for random range
