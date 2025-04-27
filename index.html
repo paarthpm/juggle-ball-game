@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Babylon.js Football - Dynamic Outline Circles</title>
+    <title>Juggle Ball Game</title>
     <style>
         html, body { overflow: hidden; width: 100%; height: 100%; margin: 0; padding: 0; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
@@ -52,12 +52,58 @@
             z-index: 1000;
             pointer-events: none;
         }
+        #instructionModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #instructionContent {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2rem;
+            border-radius: 10px;
+            max-width: 600px;
+            text-align: center;
+        }
+
+        #startGameBtn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: background 0.3s;
+        }
+
+        #startGameBtn:hover {
+            background: #45a049;
+        }
+        .titillium-web-regular {
+            font-family: "Titillium Web", sans-serif;
+            font-weight: 400;
+            font-style: normal;
+        }
+
+
     </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
     <script src="https://cdn.babylonjs.com/cannon.js"></script>
 </head>
-<body>
+<body class="titillium-web-regular">
 <canvas id="renderCanvas"></canvas>
 <div id="loadingText">Loading Models...</div>
 <div id="scorePanel">
@@ -66,7 +112,33 @@
 </div>
 <div id="gameOverText">GAME OVER!</div>
 <div id="noticeCard"></div>
+<div id="instructionModal">
+    <div id="instructionContent">
+        <h2>Juggle Ball Game</h2>
+        <h3>Game Instructions</h3>
+        <ol style="text-align: left; margin: 20px 0;">
+            <li>Use W, A, S, D keys to move the active player</li>
+            <li>Press SPACE to start juggling</li>
+            <li>Click the ball while it's in the air to juggle</li>
+            <li>Press F to switch between players</li>
+            <li>Press O to pass the ball to the selected player</li>
+            <li>Don't let the ball hit the ground more than 5 times</li>
+            <li>Pass the ball after 10 juggles to keep scoring</li>
+            
+            <h5>Important Note:</h5>
+            <ul>
+                <li>Each player reside insides a circle with dynamic radius. Passes can be completed only if the circles intersects.</li>
+                <li>If juggles exceed more than 10, the circle turns red indicating that the threshold limit has been reached. Pass the ball to the nearesst player to keep scoring</li>
+            </ul>
+        </ol>
+        <h3>Happy Juggling!</h3>
+        <button id="startGameBtn">Start Game</button>
+    </div>
+</div>
 <script>
+startGameBtn.addEventListener('click', () => {
+instructionModal.style.display = 'none';
+});
 let gameStarted = false;
 let score = 0;
 let highScore = 0;
