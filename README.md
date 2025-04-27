@@ -22,3 +22,10 @@ P.S: Model not compressed, loading takes time. Patience needed for first run.<br
         <li>If juggles exceed more than 10, the circle turns red indicating that the threshold limit has been reached. Pass the ball to the nearesst player to keep scoring</li>
     </ul>
 </ol>
+
+<h3>In game images</h3>
+<p align="center">
+    <img src="assets/images/game-pic-1.png" alt="Game instructions"/><hr>
+    <img src="assets/images/game-pic-2.png" alt="Game play model"/><hr>
+    <img src="assets/images/game-pic-3.png" alt="Game play"/>
+</p>
