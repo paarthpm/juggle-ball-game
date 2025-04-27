@@ -36,6 +36,22 @@
             z-index: 11;
             display: none;
         }
+        #noticeCard {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.2em;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+            pointer-events: none;
+        }
     </style>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -49,6 +65,7 @@
     High Score: <span id="highScoreValue">0</span>
 </div>
 <div id="gameOverText">GAME OVER!</div>
+<div id="noticeCard"></div>
 <script>
 let gameStarted = false;
 let score = 0;
@@ -73,6 +90,25 @@ const maxCircleRadiusRange = [3.5, 4.5]; // Min/Max for the largest radius possi
 const radiusChangeSpeedRange = [0.8, 1.5]; // Min/Max for radius animation speed
 const circlePoints = 64; // Number of points for the circle outline
 
+let noticeTimeout;
+
+function showNotice(message, duration = 3000) {
+    const noticeCard = document.getElementById('noticeCard');
+    noticeCard.textContent = message;
+    
+    // Clear any existing timeout
+    if (noticeTimeout) clearTimeout(noticeTimeout);
+    
+    // Show and animate the notice
+    noticeCard.style.display = 'block';
+    setTimeout(() => noticeCard.style.opacity = '1', 10);
+    
+    // Hide after duration
+    noticeTimeout = setTimeout(() => {
+        noticeCard.style.opacity = '0';
+        setTimeout(() => noticeCard.style.display = 'none', 300);
+    }, duration);
+}
 
 const createScene = async () => {
     const scene = new BABYLON.Scene(engine);
@@ -370,6 +406,7 @@ const createScene = async () => {
              const targetPlayer = players[activePlayerIndex];
              if (jugglingPlayer === targetPlayer) {
                   console.log("Cannot pass to self.");
+                 showNotice("Cannot pass to self.", 2500);
                  return;
              }
 
@@ -404,6 +441,7 @@ const createScene = async () => {
 
              } else {
                  console.log("Target player not close enough for a pass.");
+                 showNotice("Target player not close enough for a pass.", 2500);
              }
         }
 
@@ -502,6 +540,34 @@ const createScene = async () => {
             } // End active player movement logic
         }); // End loop through players
 
+
+        if (currentBall && gameStarted && !gameOver) {
+            const ballPos = currentBall.getAbsolutePosition();
+            
+            // Ground boundaries (40x40 ground centered at 0,0)
+            const groundBoundary = 20; // Half of 40 width/height
+            const minY = -5; // Arbitrary "fell too low" threshold
+
+            // Check if ball is outside boundaries or too low
+            if (Math.abs(ballPos.x) > groundBoundary || 
+                Math.abs(ballPos.z) > groundBoundary || 
+                ballPos.y < minY) {
+                
+                gameOver = true;
+                document.getElementById('gameOverText').style.display = 'block';
+                
+                if(score > highScore) {
+                    highScore = score;
+                    document.getElementById('highScoreValue').textContent = highScore;
+                }
+                
+                // Dispose ball physics and mesh
+                currentBall.physicsImpostor.dispose();
+                currentBall.dispose();
+                currentBall = null;
+                gameStarted = false;
+            }
+        }
 
          // Arrow update (ensure parent still correct)
         if (players[activePlayerIndex] && arrow.parent !== players[activePlayerIndex].mesh) {
