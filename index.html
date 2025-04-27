@@ -121,9 +121,16 @@ const createScene = async () => {
 
 
     const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
-    light.intensity = 0.8;
+    light.intensity = 3;
 
     const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 40, height: 40}, scene);
+    const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+    groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.3); // Grass green
+    groundMat.specularColor = new BABYLON.Color3(0.1, 0.3, 0.15); // Subtle specular
+    groundMat.specularPower = 64;
+    groundMat.backFaceCulling = false; // Ensure both sides visible
+    ground.material = groundMat;
+
     if (!scene.isPhysicsEnabled()) {
          scene.enablePhysics(new BABYLON.Vector3(0, -gravity, 0), new BABYLON.CannonJSPlugin());
     } else {
@@ -257,6 +264,8 @@ const createScene = async () => {
 
     updateActivePlayer();
 
+    showNotice("Click and press space key to start the game", 4000);
+
     function setPlayerIdle(player) {
         if (!player || !player.anims?.idle) return;
         if (player.currentAnim && player.currentAnim !== player.anims.idle) {
@@ -337,8 +346,8 @@ const createScene = async () => {
                 currentBall = BABYLON.MeshBuilder.CreateSphere("ball", { diameter: 0.25 }, scene);
                 currentBall.position = spawnPos;
                 currentBall.material = new BABYLON.StandardMaterial("ballMat", scene);
-                currentBall.material.diffuseColor = new BABYLON.Color3(1, 1, 1);
-                currentBall.material.specularColor = new BABYLON.Color3(0.5, 0.5, 0.5);
+                currentBall.material.diffuseColor = new BABYLON.Color3(0.6, 0.4, 0.2);
+                currentBall.material.specularColor = new BABYLON.Color3(0.6, 0.4, 0.2);
 
                 currentBall.physicsImpostor = new BABYLON.PhysicsImpostor(
                     currentBall,
